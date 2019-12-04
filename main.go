@@ -1,7 +1,6 @@
 package main
 
 import (
-	"C"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -17,8 +16,7 @@ import (
 // Possible enhancement
 // see https://github.com/chromedp/chromedp/blob/b6cbbcbe0381881e25336acaa16f8e6122a91296/examples/cookie/main.go
 
-//export GetCookies
-func GetCookies() {
+func main() {
 	home, _ := os.LookupEnv("LOCALAPPDATA")
 	// userDataDir := home + "/.config/google-chrome"
 	userDataDir := home + `\Google\Chrome\User Data`
@@ -75,5 +73,3 @@ func GetCookies() {
 	}
 	fmt.Println(buf.String())
 }
-
-func main() {}
