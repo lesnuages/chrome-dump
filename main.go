@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"runtime"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -16,12 +17,45 @@ import (
 // Possible enhancement
 // see https://github.com/chromedp/chromedp/blob/b6cbbcbe0381881e25336acaa16f8e6122a91296/examples/cookie/main.go
 
+const (
+	darwinUserDataDir  = "Library/Application Support/Google/Chrome"
+	linuxUserDataDir   = ".config/google-chrome"
+	windowsUserDataDir = `Google\Chrome\User Data`
+
+	linuxChromeBin   = "google-chrome"
+	darwinChromeBin  = `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
+	windowsChromeBin = `C:\Program Files (x86)\Google\Chrome\Application\Chrome.exe`
+)
+
+func getOsSpecificPaths() (string, string) {
+	var (
+		userDataDir string
+		home        string
+		chromePath  string
+	)
+
+	switch runtime.GOOS {
+	case "windows":
+		home, _ = os.LookupEnv("LOCALAPPDATA")
+		userDataDir = fmt.Sprintf("%s\\%s", home, windowsUserDataDir)
+		chromePath = windowsChromeBin
+	case "linux":
+		home, _ = os.LookupEnv("HOME")
+		userDataDir = fmt.Sprintf("%s/%s", home, linuxUserDataDir)
+		chromePath = linuxChromeBin
+		break
+	case "darwin":
+		home, _ = os.LookupEnv("HOME")
+		userDataDir = fmt.Sprintf("%s/%s", home, darwinUserDataDir)
+		chromePath = darwinChromeBin
+		break
+	}
+	return userDataDir, chromePath
+}
+
 func main() {
-	home, _ := os.LookupEnv("LOCALAPPDATA")
-	// userDataDir := home + "/.config/google-chrome"
-	userDataDir := home + `\Google\Chrome\User Data`
-	// cmd := exec.Command("google-chrome", "--headless", "--user-data-dir="+userDataDir, "--remote-debugging-port=9222", "--no-sandbox")
-	cmd := exec.Command(`C:\Program Files (x86)\Google\Chrome\Application\Chrome.exe`, "--headless", "--user-data-dir="+userDataDir, "--remote-debugging-port=9222", "--no-sandbox")
+	userDataDir, chromePath := getOsSpecificPaths()
+	cmd := exec.Command(chromePath, "--headless", "--user-data-dir="+userDataDir, "--remote-debugging-port=9222", "--no-sandbox")
 
 	err := cmd.Start()
 	if err != nil {
