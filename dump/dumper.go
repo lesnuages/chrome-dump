@@ -68,7 +68,6 @@ func toMap(cookies []*network.Cookie) map[string][]*network.Cookie {
 
 // Dump Google Chrome's cookies
 func Dump() {
-
 	dir := getUserDataDir()
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.DisableGPU,
@@ -77,7 +76,6 @@ func Dump() {
 	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
 	defer cancel()
 
-	// also set up a custom logger
 	taskCtx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(log.Printf))
 	defer cancel()
 	task := chromedp.Tasks{
