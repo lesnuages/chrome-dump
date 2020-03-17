@@ -13,9 +13,13 @@ import (
 
 //export ChromeDump
 func ChromeDump() {
-	os.Unsetenv("LD_PRELOAD")
+	if runtime.GOOS != "windows" {
+		os.Unsetenv("LD_PRELOAD")
+	}
 	dump.Dump()
-	os.Exit(0)
+	if runtime.GOOS != "windows" {
+		os.Exit(0)
+	}
 }
 
 func main() {}
