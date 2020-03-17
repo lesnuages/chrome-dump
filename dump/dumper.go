@@ -1,115 +1,108 @@
 package dump
 
 import (
-	"bytes"
-	"encoding/json"
+	"context"
 	"fmt"
-	"io/ioutil"
-	"net/http"
+	"log"
+	"math"
 	"os"
-	"os/exec"
 	"runtime"
+	"sort"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/chromedp/cdproto/network"
+	"github.com/chromedp/chromedp"
 )
 
 const (
 	darwinUserDataDir  = "Library/Application Support/Google/Chrome"
 	linuxUserDataDir   = ".config/google-chrome"
 	windowsUserDataDir = `Google\Chrome\User Data`
-
-	linuxChromeBin   = "google-chrome"
-	darwinChromeBin  = `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
-	windowsChromeBin = `C:\Program Files (x86)\Google\Chrome\Application\Chrome.exe`
 )
 
-func getOsSpecificPaths() (string, string) {
+func getUserDataDir() string {
 	var (
 		userDataDir string
 		home        string
-		chromePath  string
 	)
 
 	switch runtime.GOOS {
 	case "windows":
 		home, _ = os.LookupEnv("LOCALAPPDATA")
 		userDataDir = fmt.Sprintf("%s\\%s", home, windowsUserDataDir)
-		chromePath = windowsChromeBin
 	case "linux":
 		home, _ = os.LookupEnv("HOME")
 		userDataDir = fmt.Sprintf("%s/%s", home, linuxUserDataDir)
-		chromePath = linuxChromeBin
 		break
 	case "darwin":
 		home, _ = os.LookupEnv("HOME")
 		userDataDir = fmt.Sprintf("%s/%s", home, darwinUserDataDir)
-		chromePath = darwinChromeBin
 		break
 	}
-	return userDataDir, chromePath
+	return userDataDir
 }
 
-func Dump() {
-	userDataDir, chromePath := getOsSpecificPaths()
-	if _, err := os.Stat(userDataDir); os.IsNotExist(err) {
-		fmt.Printf("%s is not a valid path. Missing some $HOME variable?\n", userDataDir)
-		return
-	}
-	cmd := exec.Command(chromePath, "--headless", "--user-data-dir="+userDataDir, "--remote-debugging-port=9222", "--no-sandbox")
+// ByDomain is a custom sort function
+type ByDomain []*network.Cookie
 
-	err := cmd.Start()
-	if err != nil {
-		fmt.Printf("[!] could not start chrome: %v", err)
-		return
-	}
-	time.Sleep(2 * time.Second)
-	resp, err := http.Get("http://localhost:9222/json")
-	if err != nil {
-		fmt.Printf("[!] error contacting chrome debugger: %v", err)
-		cmd.Process.Kill()
-		return
-	}
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
-	var result []map[string]interface{}
-	err = json.Unmarshal(bodyBytes, &result)
-	if err != nil {
-		fmt.Printf("[!] error unmarshalling json: %v", err)
-		cmd.Process.Kill()
-		return
-	}
-	websocketURL := fmt.Sprintf("%v", result[0]["webSocketDebuggerUrl"])
-	conn, _, err := websocket.DefaultDialer.Dial(websocketURL, http.Header{})
-	err = conn.WriteMessage(websocket.TextMessage, []byte("{\"id\": 1, \"method\": \"Network.getAllCookies\"}"))
-	if err != nil {
-		fmt.Printf("[!] could not write to websocket: %v", err)
-		cmd.Process.Kill()
-		return
-	}
-	var data string
-	go func() {
-		for {
-			msgType, buf, err := conn.ReadMessage()
-			if err != nil {
-				fmt.Printf("[!] could not read message: %v", err)
-				break
-			}
-			if len(buf) == 0 {
-				break
-			}
-			if msgType == websocket.TextMessage {
-				data += string(buf)
-			}
+func (a ByDomain) Len() int { return len(a) }
+func (a ByDomain) Less(i, j int) bool {
+	return a[i].Domain < a[j].Domain
+}
+func (a ByDomain) Swap(i, j int) {
+	a[i], a[j] = a[j], a[i]
+}
+
+func toMap(cookies []*network.Cookie) map[string][]*network.Cookie {
+	var result map[string][]*network.Cookie = make(map[string][]*network.Cookie)
+	for _, cookie := range cookies {
+		_, ok := result[cookie.Domain]
+		if ok {
+			result[cookie.Domain] = append(result[cookie.Domain], cookie)
+		} else {
+			result[cookie.Domain] = []*network.Cookie{cookie}
 		}
-	}()
-	time.Sleep(1 * time.Second)
-	cmd.Process.Kill()
-	var buf bytes.Buffer
-	err = json.Indent(&buf, []byte(data), "", " ")
-	if err != nil {
-		cmd.Process.Kill()
-		return
 	}
-	fmt.Println(buf.String())
-	cmd.Process.Kill()
+	return result
+}
+
+// Dump Google Chrome's cookies
+func Dump() {
+
+	dir := getUserDataDir()
+	opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.DisableGPU,
+		chromedp.UserDataDir(dir),
+	)
+	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
+	defer cancel()
+
+	// also set up a custom logger
+	taskCtx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(log.Printf))
+	defer cancel()
+	task := chromedp.Tasks{
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			cookies, err := network.GetAllCookies().Do(ctx)
+			if err != nil {
+				return err
+			}
+			sort.Sort(ByDomain(cookies))
+			mapped := toMap(cookies)
+			for domain, mappedCookies := range mapped {
+				fmt.Printf("%s\n", domain)
+				fmt.Println("------------------")
+				for _, c := range mappedCookies {
+					sec, dec := math.Modf(c.Expires)
+					exp := time.Unix(int64(sec), int64(dec*(1e9))).Format(time.RFC3339)
+					fmt.Printf("- %s=%s -- Expires on %s\n", c.Name, c.Value, exp)
+				}
+				fmt.Println()
+			}
+			return err
+		}),
+	}
+	err := chromedp.Run(taskCtx, task)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
