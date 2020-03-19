@@ -1,14 +1,14 @@
 package dump
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
-	"math"
 	"os"
 	"runtime"
 	"sort"
-	"time"
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
@@ -80,22 +80,22 @@ func Dump() {
 	defer cancel()
 	task := chromedp.Tasks{
 		chromedp.ActionFunc(func(ctx context.Context) error {
+			var pretty bytes.Buffer
 			cookies, err := network.GetAllCookies().Do(ctx)
 			if err != nil {
 				return err
 			}
 			sort.Sort(ByDomain(cookies))
 			mapped := toMap(cookies)
-			for domain, mappedCookies := range mapped {
-				fmt.Printf("%s\n", domain)
-				fmt.Println("------------------")
-				for _, c := range mappedCookies {
-					sec, dec := math.Modf(c.Expires)
-					exp := time.Unix(int64(sec), int64(dec*(1e9))).Format(time.RFC3339)
-					fmt.Printf("- %s=%s -- Expires on %s\n", c.Name, c.Value, exp)
-				}
-				fmt.Println()
+			jsonData, err := json.Marshal(mapped)
+			if err != nil {
+				return err
 			}
+			err = json.Indent(&pretty, jsonData, "", "\t")
+			if err != nil {
+				return err
+			}
+			fmt.Println(pretty.String())
 			return err
 		}),
 	}
