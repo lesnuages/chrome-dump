@@ -3,6 +3,8 @@ package main
 import (
 	"C"
 
+	"runtime"
+
 	"github.com/lesnuages/chrome-dump/dump"
 )
 import (
