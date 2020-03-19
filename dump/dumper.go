@@ -42,7 +42,7 @@ func getUserDataDir() string {
 	return userDataDir
 }
 
-// ByDomain is a custom sort function
+// ByDomain sorts a cookie array by domain name
 type ByDomain []*network.Cookie
 
 func (a ByDomain) Len() int { return len(a) }
