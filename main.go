@@ -10,5 +10,6 @@ func main() {
 	var remote string
 	flag.StringVar(&remote, "remote", "", "WS url")
 	flag.Parse()
-	dump.Dump(remote)
+	// dump.Dump(remote)
+	dump.Spy(remote)
 }
