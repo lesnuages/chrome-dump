@@ -1,7 +1,14 @@
 package main
 
-import "github.com/lesnuages/chrome-dump/dump"
+import (
+	"flag"
+
+	"github.com/lesnuages/chrome-dump/dump"
+)
 
 func main() {
-	dump.Dump()
+	var remote string
+	flag.StringVar(&remote, "remote", "", "WS url")
+	flag.Parse()
+	dump.Dump(remote)
 }

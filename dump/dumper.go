@@ -67,17 +67,35 @@ func toMap(cookies []*network.Cookie) map[string][]*network.Cookie {
 }
 
 // Dump Google Chrome's cookies
-func Dump() {
-	dir := getUserDataDir()
-	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.DisableGPU,
-		chromedp.UserDataDir(dir),
+func Dump(remoteURL string) {
+	var (
+		allocCtx context.Context
+		cancel   context.CancelFunc
 	)
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
-	defer cancel()
+	if remoteURL != "" {
+		allocCtx, cancel = chromedp.NewRemoteAllocator(context.Background(), remoteURL)
+		defer cancel()
+	} else {
+		dir := getUserDataDir()
+		opts := []func(*chromedp.ExecAllocator){
+			chromedp.Flag("restore-last-session", true),
+			chromedp.UserDataDir(dir),
+		}
+		if runtime.GOOS == "darwin" {
+			opts = append(opts,
+				chromedp.Flag("headless", false),
+				chromedp.Flag("use-mock-keychain", false),
+			)
+		} else {
+			opts = append(opts, chromedp.Headless)
+		}
+		opts = append(chromedp.DefaultExecAllocatorOptions[:], opts...)
+		allocCtx, cancel = chromedp.NewExecAllocator(context.Background(), opts...)
+		defer cancel()
+	}
 
-	taskCtx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(log.Printf))
-	defer cancel()
+	taskCtx, taskCancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(log.Printf))
+	defer taskCancel()
 	task := chromedp.Tasks{
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			var pretty bytes.Buffer
